@@ -76,6 +76,8 @@ TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim9;
 TIM_HandleTypeDef htim12;
 
+CAN_HandleTypeDef hCan;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -177,7 +179,7 @@ int main(void) {
 	MX_USART2_UART_Init();
 	MX_FATFS_Init();
 
-	can_init();
+	can_init(&hCan);
 
 	HAL_UART_Receive_IT(&huart2, Received, 38);
 	/* USER CODE BEGIN 2 */
