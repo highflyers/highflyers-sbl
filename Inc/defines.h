@@ -1,10 +1,3 @@
-/*
- * defines.h
- *
- *  Created on: 04.01.2018
- *      Author: Dell Latitude E5450
- */
-
 #ifndef DEFINES_H_
 #define DEFINES_H_
 

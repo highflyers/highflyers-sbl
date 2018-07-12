@@ -58,6 +58,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <can.h>
+#include <debug.h>
 #include "defines.h"
 #include "stm32fxxx_hal.h"
 #include "tm_stm32_gps.h"
@@ -108,7 +110,6 @@ static void initOUTPUTS(void);
 static void change_PWM(Pwm_output output, uint16_t pulse);
 static void setRGB(uint8_t state);
 void termination(void);
-void transmit_info(char* data_type, float value);
 void update_inputs(void);
 
 /* USER CODE END PFP */
@@ -175,6 +176,9 @@ int main(void) {
 	MX_TIM12_Init();
 	MX_USART2_UART_Init();
 	MX_FATFS_Init();
+
+	can_init();
+
 	HAL_UART_Receive_IT(&huart2, Received, 38);
 	/* USER CODE BEGIN 2 */
 	setRGB(INIT);
@@ -754,22 +758,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	transmit_info("Joint2.pulse", Joint2.pulse);
 	// Ponowne w³¹czenie nas³uchiwania
 	HAL_UART_Receive_IT(&huart2, Received, 38);
-}
-
-//zbieranie danych
-void transmit_info(char* type, float value) {
-	uint8_t data_type[50] = { 0 };
-	uint8_t data_value[50] = { 0 };
-
-	//wyslanie informacji o typie danych
-	sprintf(data_type, "%s: ", type); // Stworzenie wiadomosci do wyslania oraz przypisanie ilosci wysylanych znakow do zmiennej size./
-	HAL_UART_Transmit(&huart2, (uint8_t *) data_type, strlen(data_type),
-	HAL_MAX_DELAY);
-
-	//wyslanie danych tego typu
-	sprintf(data_value, "%f\r\n", value);
-	HAL_UART_Transmit(&huart2, (uint8_t *) data_value, strlen(data_value),
-	HAL_MAX_DELAY);
 }
 
 //zmiana parametrów sygna³u PWM
