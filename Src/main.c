@@ -64,7 +64,6 @@
 #include "stm32fxxx_hal.h"
 #include "tm_stm32_gps.h"
 #include "tm_stm32_delay.h"
-#include <canard.h>
 
 /* USER CODE END Includes */
 
@@ -79,9 +78,6 @@ TIM_HandleTypeDef htim12;
 
 CAN_HandleTypeDef hCan;
 CAN_HandleTypeDef CanHandle;
-#define CANARD_MEMORY_SIZE		1024
-static CanardInstance canard;                       ///< The library instance
-static uint8_t canard_memory_pool[CANARD_MEMORY_SIZE];            ///< Arena for memory allocation, used by the library
 
 UART_HandleTypeDef huart2;
 
@@ -185,8 +181,7 @@ int main(void) {
 	MX_FATFS_Init();
 
 	can_init(&hCan);
-
-	canardInit(&canard, canard_memory_pool, sizeof(canard_memory_pool), onTransferReceived, shouldAcceptTransfer, NULL);
+	sbl_canardInit();
 
 	HAL_UART_Receive_IT(&huart2, Received, 38);
 	/* USER CODE BEGIN 2 */
@@ -256,6 +251,11 @@ int main(void) {
 	/* USER CODE END 3 */
 
 }
+
+
+
+
+
 
 /** System Clock Configuration
  */

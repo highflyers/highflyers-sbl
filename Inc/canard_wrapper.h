@@ -1,14 +1,6 @@
-#ifndef CAN_H_
-#define CAN_H_
+#ifndef CANARD_WRAPPER_H_
+#define CANARD_WRAPPER_H_
 
-#include <stm32f4xx_hal.h>
-#include <stm32f4xx_hal_can.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <canard.h>
-#include <canard_stm32.h>
-#include <canard_wrapper.h>
 
 #define UAVCAN_NODE_ID_ALLOCATION_DATA_TYPE_ID                      1
 #define UAVCAN_NODE_ID_ALLOCATION_DATA_TYPE_SIGNATURE               0x0b2a812620a11d40
@@ -39,15 +31,6 @@
 #define GIT_HASH													4321
 
 
-#define CAN_UAVCAN_ID_ESC_RAW_DATA		1030
-
-typedef struct
-{
-	uint16_t id;
-	size_t len;
-	uint8_t data[8];
-} can_uavcan_frame_t;
-
 void sbl_canardInit();
 static void onTransferReceived(CanardInstance* ins, CanardRxTransfer* transfer);
 static bool shouldAcceptTransfer(const CanardInstance* ins,
@@ -62,8 +45,5 @@ static void makeNodeStatusMessage(uint8_t buffer[UAVCAN_NODE_STATUS_MESSAGE_SIZE
 static void processTxRxOnce(int32_t timeout_msec);
 static void process1HzTasks(uint64_t timestamp_usec);
 
-void can_init(CAN_HandleTypeDef *can);
-int can_decode_frame(const CanRxMsgTypeDef *rx, can_uavcan_frame_t *transfer);
-int can_handle_esc_command(const can_uavcan_frame_t *frame, int32_t *esc_array);
 
-#endif /* CAN_H_ */
+#endif /* CANARD_WRAPPER_H_ */
