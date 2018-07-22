@@ -76,7 +76,6 @@ TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim9;
 TIM_HandleTypeDef htim12;
 
-CAN_HandleTypeDef hCan;
 CAN_HandleTypeDef CanHandle;
 
 UART_HandleTypeDef huart2;

@@ -227,15 +227,15 @@ void SDIO_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-extern CAN_HandleTypeDef hCan;
+extern CAN_HandleTypeDef CanHandle;
 void CAN1_RX0_IRQHandler(void)
 {
-	HAL_CAN_IRQHandler(&hCan);
+	HAL_CAN_IRQHandler(&CanHandle);
 }
 
 void CAN1_RX1_IRQHandler(void)
 {
-	HAL_CAN_IRQHandler(&hCan);
+	HAL_CAN_IRQHandler(&CanHandle);
 }
 
 /* USER CODE END 1 */

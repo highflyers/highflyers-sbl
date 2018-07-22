@@ -26,6 +26,7 @@
 
 #include "canard_internals.h"
 #include <string.h>
+#include <debug.h>
 
 
 #undef MIN
@@ -262,12 +263,14 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
         (frame->id & CANARD_CAN_FRAME_ERR) != 0 ||
         (frame->data_len < 1))
     {
+    	DEBUG("Unsupported frame, not UAVCAN (%d)", __LINE__);
         return;     // Unsupported frame, not UAVCAN - ignore
     }
 
     if (transfer_type != CanardTransferTypeBroadcast &&
         destination_node_id != canardGetLocalNodeID(ins))
     {
+    	DEBUG("Address mismatch (%d)", __LINE__);
         return;     // Address mismatch
     }
 
@@ -291,6 +294,7 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
 
             if(rx_state == NULL)
             {
+            	DEBUG("No allocator room for this frame (%d)", __LINE__);
                 return; // No allocator room for this frame
             }
 
@@ -298,6 +302,7 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
         }
         else
         {
+        	DEBUG("The application doesn't want this transfer (%d)", __LINE__);
             return;     // The application doesn't want this transfer
         }
     }
@@ -307,6 +312,7 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
 
         if (rx_state == NULL)
         {
+        	DEBUG("rx_state == NULL (%d), ID: %d", __LINE__, data_type_id);
             return;
         }
     }
@@ -333,11 +339,13 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
         if (!IS_START_OF_TRANSFER(tail_byte)) // missed the first frame
         {
             rx_state->transfer_id++;
+        	DEBUG("missed the first frame (%d)", __LINE__);
             return;
         }
     }
 
     if (IS_START_OF_TRANSFER(tail_byte) && IS_END_OF_TRANSFER(tail_byte)) // single frame transfer
+//    if(1) // I hope it's temporary
     {
         rx_state->timestamp_usec = timestamp_usec;
         CanardRxTransfer rx_transfer = {
@@ -354,16 +362,19 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
         ins->on_reception(ins, &rx_transfer);
 
         prepareForNextTransfer(rx_state);
+    	DEBUG("SINGLE FRAME (%d)", __LINE__);
         return;
     }
 
     if (TOGGLE_BIT(tail_byte) != rx_state->next_toggle)
     {
+    	DEBUG("WRONG TOGGLE");
         return; // wrong toggle
     }
 
     if (TRANSFER_ID_FROM_TAIL_BYTE(tail_byte) != rx_state->transfer_id)
     {
+    	DEBUG("UNEXPECTED TID");
         return; // unexpected tid
     }
 
@@ -371,6 +382,7 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
     {
         if (frame->data_len <= 3)
         {
+        	DEBUG("data_len <= 3");
             return;     // Not enough data
         }
 
@@ -382,6 +394,7 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
         {
             releaseStatePayload(ins, rx_state);
             prepareForNextTransfer(rx_state);
+        	DEBUG("bufferBlockPushBytes %d -> 0", __LINE__);
             return;
         }
         rx_state->payload_crc = (uint16_t)(((uint16_t) frame->data[0]) | (uint16_t)((uint16_t) frame->data[1] << 8U));
@@ -396,6 +409,7 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
         {
             releaseStatePayload(ins, rx_state);
             prepareForNextTransfer(rx_state);
+        	DEBUG("bufferBlockPushBytes %d -> 0", __LINE__);
             return;
         }
         rx_state->calculated_crc = crcAdd((uint16_t)rx_state->calculated_crc,

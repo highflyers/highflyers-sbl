@@ -1,6 +1,6 @@
 #include <debug.h>
 
-extern UART_HandleTypeDef huart2;
+char  __debug_buffer[256];
 
 void transmit_info(const char* type, float value) {
 	uint8_t data_type[50] = { 0 };

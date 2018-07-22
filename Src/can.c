@@ -9,8 +9,6 @@ static uint8_t node_mode   = UAVCAN_NODE_MODE_INITIALIZATION;
 #define CANARD_MEMORY_SIZE		1024
 static CanardInstance canard;                       ///< The library instance
 static uint8_t canard_memory_pool[CANARD_MEMORY_SIZE];            ///< Arena for memory allocation, used by the library
-static uint64_t send_next_node_id_allocation_request_at;    ///< When the next node ID allocation request should be sent
-static uint8_t node_id_allocation_unique_id_offset;         ///< Depends on the stage of the next request
 
 void can_init(CAN_HandleTypeDef *can)
 {
@@ -82,15 +80,10 @@ void can_init(CAN_HandleTypeDef *can)
 	  CanHandle.pTxMsg->DLC = 2;
 	  CanHandle.pTxMsg->Data[0] = 156;
 	  CanHandle.pTxMsg->Data[1] = 86;
-	  return;
-	while (1)
-	{
-		HAL_CAN_Receive(&CanHandle, CAN_FIFO0, 1000);
-			snprintf(str, 127, "rec: %x %lu [%lu %lu %lu %lu %lu %lu %lu %lu]", CanHandle.pRxMsg->ExtId,
-					CanHandle.pRxMsg->IDE, CanHandle.pRxMsg->Data[0], CanHandle.pRxMsg->Data[1], CanHandle.pRxMsg->Data[2], CanHandle.pRxMsg->Data[3], CanHandle.pRxMsg->Data[4], CanHandle.pRxMsg->Data[5], CanHandle.pRxMsg->Data[6], CanHandle.pRxMsg->Data[7]);
-			DEBUG(str);
 
-	}
+	  HAL_CAN_Receive_IT(&CanHandle, CAN_FIFO0);
+
+	  return;
 }
 
 int can_decode_frame(const CanRxMsgTypeDef *rx, can_uavcan_frame_t *dst)
@@ -110,93 +103,112 @@ int can_handle_esc_command(const can_uavcan_frame_t *frame, int32_t *esc_array)
 	{
 		ret = -EINVAL;
 	}
-	return 0;
+	return ret;
 }
 
-static void onTransferReceived(CanardInstance* ins,
+void can_uavcan_handle_node_info_request(CanardInstance *ins,
+		CanardRxTransfer *transfer)
+{
+	printf("GetNodeInfo request from %d\n", transfer->source_node_id);
+
+	uint8_t buffer[UAVCAN_GET_NODE_INFO_RESPONSE_MAX_SIZE];
+	memset(buffer, 0, UAVCAN_GET_NODE_INFO_RESPONSE_MAX_SIZE);
+
+	// NodeStatus
+	makeNodeStatusMessage(buffer);
+
+	// SoftwareVersion
+	buffer[7] = APP_VERSION_MAJOR;
+	buffer[8] = APP_VERSION_MINOR;
+	buffer[9] = 1;                    // Optional field flags, VCS commit is set
+	uint32_t u32 = GIT_HASH;
+	canardEncodeScalar(buffer, 80, 32, &u32);
+	// Image CRC skipped
+
+	// HardwareVersion
+	// Major skipped
+	// Minor skipped
+	readUniqueID(&buffer[24]);
+	// Certificate of authenticity skipped
+
+	// Name
+	const size_t name_len = strlen(APP_NODE_NAME);
+	memcpy(&buffer[41], APP_NODE_NAME, name_len);
+
+	const size_t total_size = 41 + name_len;
+
+	/*
+	 * Transmitting; in this case we don't have to release the payload because it's empty anyway.
+	 */
+	const int16_t resp_res = canardRequestOrRespond(ins,
+			transfer->source_node_id,
+			UAVCAN_GET_NODE_INFO_DATA_TYPE_SIGNATURE,
+			UAVCAN_GET_NODE_INFO_DATA_TYPE_ID, &transfer->transfer_id,
+			transfer->priority, CanardResponse, &buffer[0],
+			(uint16_t) total_size);
+	if (resp_res <= 0)
+	{
+		(void) fprintf(stderr, "Could not respond to GetNodeInfo; error %d\n",
+				resp_res);
+	}
+}
+
+void can_uavcan_handle_esc_raw_data(CanardInstance *ins,
+		CanardRxTransfer *transfer)
+{
+	DEBUG("RAW DATA");
+	char str[128];
+	unsigned str_n = 0;
+	str_n += snprintf(str+str_n, 127-str_n, "RX: %d: [", transfer->data_type_id);
+	for(int i = 0; i < transfer->payload_len; ++i)
+	{
+		str_n += snprintf(str+str_n, 127-str_n, "%02x ", transfer->payload_head[i]);
+	}
+	str_n += snprintf(str+str_n, 127-str_n, "]");
+	DEBUG(str);
+}
+
+static void can_on_transfer_received(CanardInstance* ins,
                                CanardRxTransfer* transfer)
 {
+	DEBUG("can_on_transfer_received: %d", transfer->data_type_id);
     if ((transfer->transfer_type == CanardTransferTypeRequest) &&
         (transfer->data_type_id == UAVCAN_GET_NODE_INFO_DATA_TYPE_ID))
     {
-        printf("GetNodeInfo request from %d\n", transfer->source_node_id);
-
-        uint8_t buffer[UAVCAN_GET_NODE_INFO_RESPONSE_MAX_SIZE];
-        memset(buffer, 0, UAVCAN_GET_NODE_INFO_RESPONSE_MAX_SIZE);
-
-        // NodeStatus
-        makeNodeStatusMessage(buffer);
-
-        // SoftwareVersion
-        buffer[7] = APP_VERSION_MAJOR;
-        buffer[8] = APP_VERSION_MINOR;
-        buffer[9] = 1;                          // Optional field flags, VCS commit is set
-        uint32_t u32 = GIT_HASH;
-        canardEncodeScalar(buffer, 80, 32, &u32);
-        // Image CRC skipped
-
-        // HardwareVersion
-        // Major skipped
-        // Minor skipped
-        readUniqueID(&buffer[24]);
-        // Certificate of authenticity skipped
-
-        // Name
-        const size_t name_len = strlen(APP_NODE_NAME);
-        memcpy(&buffer[41], APP_NODE_NAME, name_len);
-
-        const size_t total_size = 41 + name_len;
-
-        /*
-         * Transmitting; in this case we don't have to release the payload because it's empty anyway.
-         */
-        const int16_t resp_res = canardRequestOrRespond(ins,
-                                                        transfer->source_node_id,
-                                                        UAVCAN_GET_NODE_INFO_DATA_TYPE_SIGNATURE,
-                                                        UAVCAN_GET_NODE_INFO_DATA_TYPE_ID,
-                                                        &transfer->transfer_id,
-                                                        transfer->priority,
-                                                        CanardResponse,
-                                                        &buffer[0],
-                                                        (uint16_t)total_size);
-        if (resp_res <= 0)
-        {
-            (void)fprintf(stderr, "Could not respond to GetNodeInfo; error %d\n", resp_res);
-        }
+    	can_uavcan_handle_node_info_request(ins, transfer);
     }
+
+	if(transfer->data_type_id == CAN_UAVCAN_ID_ESC_RAW_DATA)
+	{
+		can_uavcan_handle_esc_raw_data(ins, transfer);
+	}
 }
 
 static bool shouldAcceptTransfer(const CanardInstance* ins,
-                                 uint64_t* out_data_type_signature,
-                                 uint16_t data_type_id,
-                                 CanardTransferType transfer_type,
-                                 uint8_t source_node_id)
+		uint64_t* out_data_type_signature, uint16_t data_type_id,
+		CanardTransferType transfer_type, uint8_t source_node_id)
 {
-    (void)source_node_id;
-
-    if (canardGetLocalNodeID(ins) == CANARD_BROADCAST_NODE_ID)
-    {
-        /*
-         * If we're in the process of allocation of dynamic node ID, accept only relevant transfers.
-         */
-        if ((transfer_type == CanardTransferTypeBroadcast) &&
-            (data_type_id == UAVCAN_NODE_ID_ALLOCATION_DATA_TYPE_ID))
-        {
-            *out_data_type_signature = UAVCAN_NODE_ID_ALLOCATION_DATA_TYPE_SIGNATURE;
-            return true;
-        }
-    }
-    else
-    {
-        if ((transfer_type == CanardTransferTypeRequest) &&
-            (data_type_id == UAVCAN_GET_NODE_INFO_DATA_TYPE_ID))
-        {
-            *out_data_type_signature = UAVCAN_GET_NODE_INFO_DATA_TYPE_SIGNATURE;
-            return true;
-        }
-    }
-
-    return false;
+	bool ret = false;
+	(void) source_node_id;
+	if ((transfer_type == CanardTransferTypeRequest)
+			&& (data_type_id == UAVCAN_GET_NODE_INFO_DATA_TYPE_ID))
+	{
+		*out_data_type_signature = UAVCAN_GET_NODE_INFO_DATA_TYPE_SIGNATURE;
+		ret = true;
+	}
+	if(data_type_id == CAN_UAVCAN_ID_ESC_RAW_DATA)
+	{
+		ret = true;
+	}
+	if(data_type_id == 1010)
+	{
+		ret = true;
+	}
+	if(ret == false)
+	{
+		DEBUG("Unknown data type: %d", data_type_id);
+	}
+	return true;
 }
 
 static uint64_t getMonotonicTimestampUSec(void)
@@ -204,17 +216,12 @@ static uint64_t getMonotonicTimestampUSec(void)
     return HAL_GetTick() * 1000;
 }
 
-static float getRandomFloat(void)
-{
-    return (float)HAL_GetTick() / (float)0xFFFFFFFF;
-}
-
 static void readUniqueID(uint8_t* out_uid)
 {
-    for (uint8_t i = 0; i < UNIQUE_ID_LENGTH_BYTES; i++)
-    {
-        out_uid[i] = i;
-    }
+	for (uint8_t i = 0; i < UNIQUE_ID_LENGTH_BYTES; i++)
+	{
+		out_uid[i] = i;
+	}
 }
 
 static void makeNodeStatusMessage(uint8_t buffer[UAVCAN_NODE_STATUS_MESSAGE_SIZE])
@@ -272,7 +279,7 @@ static void processTxRxOnce(int32_t timeout_msec)
 					CanHandle.pTxMsg->Data[5],
 					CanHandle.pTxMsg->Data[6],
 					CanHandle.pTxMsg->Data[7]);
-    		DEBUG(str);
+//    		DEBUG(str);
             canardPopTxQueue(&canard);
         }
         else                    // Timeout - just exit and try again later
@@ -297,25 +304,29 @@ static void processTxRxOnce(int32_t timeout_msec)
     		rx_frame.data[i] = CanHandle.pRxMsg->Data[i];
     	}
     	rx_frame.data_len = CanHandle.pRxMsg->DLC;
-    	rx_frame.id = CanHandle.pRxMsg->ExtId;
+    	if(CanHandle.pRxMsg->IDE == CAN_ID_EXT)
+    	{
+    		rx_frame.id = CanHandle.pRxMsg->ExtId;
+    		rx_frame.id |= CANARD_CAN_FRAME_EFF;
+    	}
+    	else
+    	{
+    		rx_frame.id = CanHandle.pRxMsg->StdId;
+    	}
+    	if(CanHandle.pRxMsg->RTR)
+    	{
+    		rx_frame.id |= CANARD_CAN_FRAME_RTR;
+    	}
 
-        canardHandleRxFrame(&canard, &rx_frame, timestamp);
+//        canardHandleRxFrame(&canard, &rx_frame, timestamp);
 
-//		snprintf(str, 127, "RX: %x %lu [%lu %lu %lu %lu %lu %lu %lu %lu]", CanHandle.pRxMsg->ExtId,
-//				CanHandle.pRxMsg->IDE,
-//				CanHandle.pRxMsg->Data[0],
-//				CanHandle.pRxMsg->Data[1],
-//				CanHandle.pRxMsg->Data[2],
-//				CanHandle.pRxMsg->Data[3],
-//				CanHandle.pRxMsg->Data[4],
-//				CanHandle.pRxMsg->Data[5],
-//				CanHandle.pRxMsg->Data[6],
-//				CanHandle.pRxMsg->Data[7]);
+        DEBUG_NO_NEWLINE("%08x ", CanHandle.pRxMsg->ExtId);
+        for(int i = 0; i < CanHandle.pRxMsg->DLC; ++i)
+        {
+        	DEBUG_NO_NEWLINE("%02x ", CanHandle.pRxMsg->Data[i]);
+        }
+        DEBUG("");
 
-        can_uavcan_frame_t uavcan;
-        can_decode_frame(CanHandle.pRxMsg, &uavcan);
-        snprintf(str, 127, "RX: %d %d", CanHandle.pRxMsg->IDE, uavcan.id);
-		DEBUG(str);
     }
     else
     {
@@ -326,9 +337,8 @@ static void processTxRxOnce(int32_t timeout_msec)
 void sbl_canardInit()
 {
 	canardInit(&canard, canard_memory_pool, sizeof(canard_memory_pool),
-			onTransferReceived, shouldAcceptTransfer, NULL);
+			can_on_transfer_received, shouldAcceptTransfer, NULL);
 
-	node_id_allocation_unique_id_offset = 0;
 	canardSetLocalNodeID(&canard, 54);
 
 
