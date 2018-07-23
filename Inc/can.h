@@ -25,7 +25,7 @@ typedef struct
 {
 	uint32_t push_index, pop_index;
 	uint32_t capacity;
-	can_frame_t array[64];
+	can_frame_t array[32];
 	uint8_t locked;
 } can_fifo_t;
 

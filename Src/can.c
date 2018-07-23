@@ -80,8 +80,10 @@ void can_init()
 	CanHandle.pTxMsg->Data[0] = 156;
 	CanHandle.pTxMsg->Data[1] = 86;
 
-	HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 4, 4);
+	HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 0, 0);
 	HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
+	HAL_NVIC_SetPriority(CAN1_RX1_IRQn, 0, 1);
+	HAL_NVIC_EnableIRQ(CAN1_RX1_IRQn);
 
 	HAL_CAN_Receive_IT(&CanHandle, CAN_FIFO0);
 	return;
@@ -91,7 +93,7 @@ void can_fifo_init(can_fifo_t *fifo)
 {
 	fifo->pop_index = 0;
 	fifo->push_index = 0;
-	fifo->capacity = 64;
+	fifo->capacity = 32;
 	fifo->locked = 0;
 }
 
@@ -120,10 +122,16 @@ uint8_t can_fifo_push(can_fifo_t *fifo, uint32_t id, uint8_t *data, uint8_t leng
 		{
 			fifo->array[fifo->push_index].id = id;
 			fifo->array[fifo->push_index].length = length;
-			for(unsigned i = 0; i < length; ++i)
-			{
-				fifo->array[fifo->push_index].data[i] = data[i];
-			}
+			*(uint64_t*)fifo->array[fifo->push_index].data = *(uint64_t *)data;
+//			*(uint64_t*)fifo->array[fifo->push_index].data = *(uint64_t *)data;
+//			*(uint64_t*)fifo->array[fifo->push_index].data = 0x5634 + id;
+//			for(unsigned i = 0; i < length; ++i)
+//			{
+////				fifo->array[fifo->push_index].data[i] = data[i];
+////				fifo->array[fifo->push_index].data[i] = id % i;
+//				id += data[i];
+//			}
+//			fifo->array[fifo->push_index].data[length-1] = 0x9a;
 
 			uint32_t new_push_idnex = fifo->push_index + 1;
 			new_push_idnex %= fifo->capacity;
@@ -168,8 +176,9 @@ void can_spin()
 }
 
 void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan)
-{
-	if (can_fifo_push(&can_fifo, hcan->pRxMsg->ExtId, hcan->pRxMsg->Data, hcan->pRxMsg->DLC) == 0)
+{CanRxMsgTypeDef *can_active_buffer = hcan->pRxMsg;
+	if (can_fifo_push(&can_fifo, can_active_buffer->ExtId,
+			can_active_buffer->Data, can_active_buffer->DLC) == 0)
 	{
 		++can_stats.rx_dropped;
 	}

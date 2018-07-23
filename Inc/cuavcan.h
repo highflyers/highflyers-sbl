@@ -26,13 +26,13 @@
 #include <stdbool.h>
 #include <cuavcan_config.h>
 
-#define CUAVCAN_MESSAGE_MAX_LENGTH		128
+#define CUAVCAN_MESSAGE_MAX_LENGTH		32
 
 typedef struct
 {
 	uint16_t id;
 	uint8_t source;
-	uint8_t payload[CUAVCAN_MESSAGE_MAX_LENGTH];
+	uint8_t *payload;
 	uint8_t length;
 } cuavcan_message_t;
 
@@ -73,3 +73,4 @@ uint8_t cuavcan_get_node_id(uint32_t frame_id);
 void cuavcan_parse_tail_byte(uint8_t *payload, uint8_t length, cuavcan_tail_byte_t *dst);
 bool cuavcan_is_transfer_single_frame(cuavcan_tail_byte_t *tail);
 cuavcan_message_assembly_t *cuavcan_find_message_assembly(cuavcan_instance_t *uavcan, uint16_t msg_id);
+void cuavcan_copy(uint8_t *from, uint8_t *to, uint8_t count);

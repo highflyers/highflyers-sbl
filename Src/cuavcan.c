@@ -57,7 +57,7 @@ void cuavcan_handle_can_frame(cuavcan_instance_t * uavcan, uint32_t id, uint8_t 
 		cuavcan_parse_tail_byte(payload, length, &tail_byte);
 		if (cuavcan_is_transfer_single_frame(&tail_byte))
 		{
-			memcpy(msg->msg.payload, payload, length - 1);
+			*(uint64_t*)msg->msg.payload = *(uint64_t *)payload;
 			msg->msg.length = length - 1;
 			CUAVCAN_DEBUG("single-frame message");
 			uavcan->on_new_message(&msg->msg);
@@ -72,7 +72,9 @@ void cuavcan_handle_can_frame(cuavcan_instance_t * uavcan, uint32_t id, uint8_t 
 				{
 					msg->is_initialized = true;
 					msg->expected_toggle = !msg->expected_toggle;
-					memcpy(msg->msg.payload + msg->msg.length, payload + 2, length - 3);
+//					memcpy(msg->msg.payload + msg->msg.length, payload + 2, length - 3);
+//					*(uint64_t*)(msg->msg.payload[msg->msg.length]) = *(uint64_t *)(payload[2]);
+					cuavcan_copy(payload+2, msg->msg.payload + msg->msg.length, length - 3);
 					msg->msg.length += length - 3;
 					CUAVCAN_DEBUG("first frame");
 				}
@@ -83,7 +85,9 @@ void cuavcan_handle_can_frame(cuavcan_instance_t * uavcan, uint32_t id, uint8_t 
 				else if (msg->is_initialized && !tail_byte.is_start_of_transfer && !tail_byte.is_end_of_transfer)
 				{
 					msg->expected_toggle = !msg->expected_toggle;
-					memcpy(msg->msg.payload + msg->msg.length, payload, length - 1);
+//					memcpy(msg->msg.payload + msg->msg.length, payload, length - 1);
+//					*(uint64_t*)(msg->msg.payload[msg->msg.length]) = *(uint64_t *)(payload);
+					cuavcan_copy(payload, msg->msg.payload + msg->msg.length, length - 1);
 					msg->msg.length += length - 1;
 					CUAVCAN_DEBUG("middle frame");
 				}
@@ -95,7 +99,9 @@ void cuavcan_handle_can_frame(cuavcan_instance_t * uavcan, uint32_t id, uint8_t 
 				{
 					msg->is_complete = true;
 					// TODO: calculate CRC
-					memcpy(msg->msg.payload + msg->msg.length, payload, length - 1);
+//					memcpy(msg->msg.payload + msg->msg.length, payload, length - 1);
+//					*(uint64_t*)(msg->msg.payload[msg->msg.length]) = *(uint64_t *)(payload);
+					cuavcan_copy(payload, msg->msg.payload + msg->msg.length, length - 1);
 					msg->msg.length += length - 1;
 					CUAVCAN_DEBUG("last frame");
 					uavcan->on_new_message(&msg->msg);
@@ -159,4 +165,12 @@ cuavcan_message_assembly_t * cuavcan_find_message_assembly(cuavcan_instance_t *u
 		}
 	}
 	return ret;
+}
+
+void cuavcan_copy(uint8_t *from, uint8_t *to, uint8_t count)
+{
+	for(uint8_t i = 0; i < count; ++i)
+	{
+		to[i] = from[i];
+	}
 }

@@ -84,6 +84,9 @@ CanRxMsgTypeDef RxMessage1;
 can_stats_t can_stats;
 can_fifo_t can_fifo;
 cuavcan_instance_t uavcan;
+uint8_t payload0[CUAVCAN_MESSAGE_MAX_LENGTH];
+uint8_t payload1[CUAVCAN_MESSAGE_MAX_LENGTH];
+uint8_t payload2[CUAVCAN_MESSAGE_MAX_LENGTH];
 
 UART_HandleTypeDef huart2;
 
@@ -150,12 +153,13 @@ Pwm_output Joint2 = { &htim1, TIM_CHANNEL_3, 75, 50, 100, 50 };
 
 void messageHandler(cuavcan_message_t *msg)
 {
-	DEBUG_NO_NEWLINE("%d [%d]  ", msg->id, msg->length);
-	for (unsigned i = 0; i < msg->length; ++i)
-	{
-		DEBUG_NO_NEWLINE("%02x ", msg->payload[i]);
-	}
-	DEBUG("");
+//	DEBUG_NO_NEWLINE("%d [%d]  ", msg->id, msg->length);
+//	for (unsigned i = 0; i < msg->length; ++i)
+//	{
+//		DEBUG_NO_NEWLINE("%02x ", msg->payload[i]);
+//	}
+//	DEBUG(" ");
+	++can_stats.tx;
 }
 
 int main(void) {
@@ -200,9 +204,16 @@ int main(void) {
 	can_stats.tx = 0;
 	can_stats.rx_dropped = 0;
 	can_fifo_init(&can_fifo);
-	uint16_t subscribed_ids[] = { 1010, 1030, 341};
-	cuavcan_init(&uavcan, subscribed_ids, 3, messageHandler);
+	uint16_t subscribed_ids[] = { 1030, 341};
+	cuavcan_init(&uavcan, subscribed_ids, 2, messageHandler);
+	uavcan.msgs[0].msg.payload = payload0;
+	uavcan.msgs[1].msg.payload = payload1;
+	uavcan.msgs[2].msg.payload = payload2;
 	can_init();
+	while (1) {
+		HAL_Delay(20);
+		can_spin();
+	}
 
 	HAL_UART_Receive_IT(&huart2, Received, 38);
 	/* USER CODE BEGIN 2 */
@@ -215,7 +226,7 @@ int main(void) {
 	SD_dataread(&pointpos, &boxborders, &nop);
 	transmit_info("oczekiwanie na GPS", EMPTY);
 	while (hdop <= HDOP_MIN || hdop >= HDOP_MAX) {
-		HAL_Delay(10);
+		HAL_Delay(100);
 //		hdop = GPS_update(&actpos);
 //		transmit_info("hdop", hdop);
 		can_spin();
@@ -722,73 +733,6 @@ void update_inputs(void) {
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-//	uint8_t Data[40];
-	char korektor[] = " ;\n\r";
-	char * dat_buff;
-	float dat_buff_f[10];
-
-	//przepisanie danych z bufora do struktury
-	for (int i = 0; i < 10; i++) {
-		if (i == 0) {
-			dat_buff = strtok(&Received, korektor);
-		} else {
-			dat_buff = strtok(NULL, korektor);
-		}
-		dat_buff_f[i] = atof(dat_buff);
-	}
-
-	//Porownanie nowych wartoœci z poprzednimi i zmiana
-	if (dat_buff_f[0] != Aileron_L.pulse) {
-		Aileron_L.pulse = dat_buff_f[0];
-		change_PWM(Aileron_L, Aileron_L.pulse);
-	}
-	if (dat_buff_f[1] != Aileron_R.pulse) {
-		Aileron_R.pulse = dat_buff_f[1];
-		change_PWM(Aileron_R, Aileron_R.pulse);
-	}
-	if (dat_buff_f[2] != Elevator.pulse) {
-		Elevator.pulse = dat_buff_f[2];
-		change_PWM(Elevator, Elevator.pulse);
-	}
-	if (dat_buff_f[3] != Rudder.pulse) {
-		Rudder.pulse = dat_buff_f[3];
-		change_PWM(Rudder, Rudder.pulse);
-	}
-	if (dat_buff_f[4] != Motor1.pulse) {
-		Motor1.pulse = dat_buff_f[4];
-		change_PWM(Motor1, Motor1.pulse);
-	}
-	if (dat_buff_f[5] != Motor2.pulse) {
-		Motor2.pulse = dat_buff_f[5];
-		change_PWM(Motor2, Motor2.pulse);
-	}
-	if (dat_buff_f[6] != Motor3.pulse) {
-		Motor3.pulse = dat_buff_f[6];
-		change_PWM(Motor3, Motor3.pulse);
-	}
-	if (dat_buff_f[7] != Motor4.pulse) {
-		Motor4.pulse = dat_buff_f[7];
-		change_PWM(Motor4, Motor4.pulse);
-	}
-	if (dat_buff_f[8] != Joint1.pulse) {
-		Joint1.pulse = dat_buff_f[8];
-		change_PWM(Joint1, Joint1.pulse);
-	}
-	if (dat_buff_f[9] != Joint2.pulse) {
-		Joint2.pulse = dat_buff_f[9];
-		change_PWM(Joint2, Joint2.pulse);
-	}
-	transmit_info("Aileron_L.pulse", Aileron_L.pulse);
-	transmit_info("Aileron_R.pulse", Aileron_R.pulse);
-	transmit_info("Elevator.pulse", Elevator.pulse);
-	transmit_info("Rudder.pulse", Rudder.pulse);
-	transmit_info("Motor1.pulse", Motor1.pulse);
-	transmit_info("Motor2.pulse", Motor2.pulse);
-	transmit_info("Motor3.pulse", Motor3.pulse);
-	transmit_info("Motor4.pulse", Motor4.pulse);
-	transmit_info("Joint1.pulse", Joint1.pulse);
-	transmit_info("Joint2.pulse", Joint2.pulse);
-	// Ponowne w³¹czenie nas³uchiwania
 	HAL_UART_Receive_IT(&huart2, Received, 38);
 }
 
