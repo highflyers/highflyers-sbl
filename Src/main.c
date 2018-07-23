@@ -59,6 +59,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <can.h>
+#include <cuavcan.h>
 #include <debug.h>
 #include "defines.h"
 #include "stm32fxxx_hal.h"
@@ -77,6 +78,12 @@ TIM_HandleTypeDef htim9;
 TIM_HandleTypeDef htim12;
 
 CAN_HandleTypeDef CanHandle;
+CanTxMsgTypeDef TxMessage;
+CanRxMsgTypeDef RxMessage;
+CanRxMsgTypeDef RxMessage1;
+can_stats_t can_stats;
+can_fifo_t can_fifo;
+cuavcan_instance_t uavcan;
 
 UART_HandleTypeDef huart2;
 
@@ -141,6 +148,16 @@ Pwm_output Joint1 = { &htim1, TIM_CHANNEL_2, 75, 50, 100, 50 };
 Pwm_output Joint2 = { &htim1, TIM_CHANNEL_3, 75, 50, 100, 50 };
 /* USER CODE END 0 */
 
+void messageHandler(cuavcan_message_t *msg)
+{
+	DEBUG_NO_NEWLINE("%d [%d]  ", msg->id, msg->length);
+	for (unsigned i = 0; i < msg->length; ++i)
+	{
+		DEBUG_NO_NEWLINE("%02x ", msg->payload[i]);
+	}
+	DEBUG("");
+}
+
 int main(void) {
 
 	/* USER CODE BEGIN 1 */
@@ -179,8 +196,13 @@ int main(void) {
 	MX_USART2_UART_Init();
 	MX_FATFS_Init();
 
-	can_init(&hCan);
-	sbl_canardInit();
+	can_stats.rx = 0;
+	can_stats.tx = 0;
+	can_stats.rx_dropped = 0;
+	can_fifo_init(&can_fifo);
+	uint16_t subscribed_ids[] = { 1010, 1030, 341};
+	cuavcan_init(&uavcan, subscribed_ids, 3, messageHandler);
+	can_init();
 
 	HAL_UART_Receive_IT(&huart2, Received, 38);
 	/* USER CODE BEGIN 2 */
@@ -194,8 +216,9 @@ int main(void) {
 	transmit_info("oczekiwanie na GPS", EMPTY);
 	while (hdop <= HDOP_MIN || hdop >= HDOP_MAX) {
 		HAL_Delay(10);
-		hdop = GPS_update(&actpos);
-		transmit_info("hdop", hdop);
+//		hdop = GPS_update(&actpos);
+//		transmit_info("hdop", hdop);
+		can_spin();
 	}
 	TM_GENERAL_DisableInterrupts();
 	ret = IsInPolygon(&actpos, pointpos, &boxborders, nop);
@@ -215,6 +238,7 @@ int main(void) {
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1) {
+		can_spin();
 		if(GPS_update(&actpos) == 1){
 		transmit_info("hdop", actpos.HDOP);
 		if ((actpos.HDOP <= HDOP_MIN || actpos.HDOP >= HDOP_MAX)
