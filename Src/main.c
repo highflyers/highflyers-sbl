@@ -201,6 +201,27 @@ void messageHandler(cuavcan_message_t *msg)
 	can_stats.debug_size = msg->length;
 }
 
+void can_print_stats()
+{
+	DEBUG("CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %ld]", can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
+			id1030_data[0],
+			id1030_data[1],
+			id1030_data[2],
+			id1030_data[3],
+			id1030_data[4],
+			id1030_data[5],
+			id1030_data[6],
+			id1030_data[7],
+			id1010_data[0],
+			id1010_data[1],
+			id1010_data[2],
+			id1010_data[3],
+			id1010_data[4],
+			id1010_data[5],
+			id1010_data[6],
+			id1010_data[7]);
+}
+
 int main(void) {
 
 	/* USER CODE BEGIN 1 */
@@ -249,27 +270,6 @@ int main(void) {
 	uavcan.msgs[1].msg.payload = payload1;
 	uavcan.msgs[2].msg.payload = payload2;
 	can_init();
-	while (1) {
-		HAL_Delay(20);
-		can_spin();
-		DEBUG("CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %ld]", can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
-				id1030_data[0],
-				id1030_data[1],
-				id1030_data[2],
-				id1030_data[3],
-				id1030_data[4],
-				id1030_data[5],
-				id1030_data[6],
-				id1030_data[7],
-				id1010_data[0],
-				id1010_data[1],
-				id1010_data[2],
-				id1010_data[3],
-				id1010_data[4],
-				id1010_data[5],
-				id1010_data[6],
-				id1010_data[7]);
-	}
 
 	HAL_UART_Receive_IT(&huart2, Received, 38);
 	/* USER CODE BEGIN 2 */
@@ -283,9 +283,9 @@ int main(void) {
 	transmit_info("oczekiwanie na GPS", EMPTY);
 	while (hdop <= HDOP_MIN || hdop >= HDOP_MAX) {
 		HAL_Delay(100);
-//		hdop = GPS_update(&actpos);
-//		transmit_info("hdop", hdop);
-		can_spin();
+		hdop = GPS_update(&actpos);
+		transmit_info("hdop", hdop);
+		can_print_stats();
 	}
 	TM_GENERAL_DisableInterrupts();
 	ret = IsInPolygon(&actpos, pointpos, &boxborders, nop);
