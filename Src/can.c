@@ -173,6 +173,7 @@ void can_spin()
 	{
 		cuavcan_handle_can_frame(&uavcan, frame->id, frame->data, frame->length);
 	}
+	update_pwm(id1030_data);
 }
 
 void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan)
