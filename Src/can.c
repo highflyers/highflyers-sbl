@@ -8,10 +8,13 @@ extern CanTxMsgTypeDef TxMessage;
 extern CanRxMsgTypeDef RxMessage;
 extern CanRxMsgTypeDef RxMessage1;
 extern can_stats_t can_stats;
-extern int32_t *id1010_data;
-extern int32_t *id1030_data;
 extern can_fifo_t can_fifo;
 extern cuavcan_instance_t uavcan;
+
+
+//  extern int32_t id1010_data[32];
+extern int32_t id1030_data[32];
+void update_pwm(int32_t *data);
 
 void can_init()
 {
@@ -82,9 +85,9 @@ void can_init()
 	CanHandle.pTxMsg->Data[0] = 156;
 	CanHandle.pTxMsg->Data[1] = 86;
 
-	HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 0, 0);
+	HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 1, 0);
 	HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
-	HAL_NVIC_SetPriority(CAN1_RX1_IRQn, 0, 1);
+	HAL_NVIC_SetPriority(CAN1_RX1_IRQn, 2, 0);
 	HAL_NVIC_EnableIRQ(CAN1_RX1_IRQn);
 
 	HAL_CAN_Receive_IT(&CanHandle, CAN_FIFO0);
