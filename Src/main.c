@@ -135,6 +135,9 @@ int operatorM = 1;
 int operatorJ = -6;
 int pulse_print;
 
+int32_t id1010_data[32];
+int32_t id1030_data[32];
+
 Pwm_output LED_R = { &htim4, TIM_CHANNEL_2, 0, 0, 999, 0 };
 Pwm_output LED_G = { &htim4, TIM_CHANNEL_3, 0, 0, 999, 0 };
 Pwm_output LED_B = { &htim4, TIM_CHANNEL_4, 0, 0, 999, 0 };
@@ -151,15 +154,51 @@ Pwm_output Joint1 = { &htim1, TIM_CHANNEL_2, 75, 50, 100, 50 };
 Pwm_output Joint2 = { &htim1, TIM_CHANNEL_3, 75, 50, 100, 50 };
 /* USER CODE END 0 */
 
+typedef union
+{
+	uint8_t u8[2];
+	int16_t i16;
+} endianness_helper;
+
 void messageHandler(cuavcan_message_t *msg)
 {
-//	DEBUG_NO_NEWLINE("%d [%d]  ", msg->id, msg->length);
-//	for (unsigned i = 0; i < msg->length; ++i)
-//	{
-//		DEBUG_NO_NEWLINE("%02x ", msg->payload[i]);
-//	}
-//	DEBUG(" ");
+	int32_t *target = NULL;
+	switch(msg->id)
+	{
+	case 1010:
+		target = id1010_data;
+		break;
+	case 1030:
+		target = id1030_data;
+		break;
+	default:
+		break;
+	}
+	uint32_t n_bits = msg->length * 8;
+	uint32_t bit_index = 0;
+	if(n_bits % 14 == 0 && target != NULL)
+	{
+		int8_t n_cmds = n_bits / 14;
+		for(uint8_t i = 0; i < n_cmds; ++i)
+		{
+			endianness_helper e_helper;
+			e_helper.u8[0] = 0;
+			for(uint8_t j = 0; j < 8; ++j)
+			{
+				e_helper.u8[0] |= (msg->payload[bit_index/8] & (0x01 << (7-(bit_index % 8))));
+				++bit_index;
+			}
+			e_helper.u8[1] = 0;
+			for(uint8_t j = 0; j < 6; ++j)
+			{
+				e_helper.u8[1] |= (msg->payload[bit_index/8] & (0x01 << (7-(bit_index % 8))));
+				++bit_index;
+			}
+			target[i] = e_helper.i16 >> 2;
+		}
+	}
 	++can_stats.tx;
+	can_stats.debug_size = msg->length;
 }
 
 int main(void) {
@@ -213,6 +252,23 @@ int main(void) {
 	while (1) {
 		HAL_Delay(20);
 		can_spin();
+		DEBUG("CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %ld]", can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
+				id1030_data[0],
+				id1030_data[1],
+				id1030_data[2],
+				id1030_data[3],
+				id1030_data[4],
+				id1030_data[5],
+				id1030_data[6],
+				id1030_data[7],
+				id1010_data[0],
+				id1010_data[1],
+				id1010_data[2],
+				id1010_data[3],
+				id1010_data[4],
+				id1010_data[5],
+				id1010_data[6],
+				id1010_data[7]);
 	}
 
 	HAL_UART_Receive_IT(&huart2, Received, 38);

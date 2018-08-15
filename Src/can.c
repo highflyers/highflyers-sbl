@@ -8,6 +8,8 @@ extern CanTxMsgTypeDef TxMessage;
 extern CanRxMsgTypeDef RxMessage;
 extern CanRxMsgTypeDef RxMessage1;
 extern can_stats_t can_stats;
+extern int32_t *id1010_data;
+extern int32_t *id1030_data;
 extern can_fifo_t can_fifo;
 extern cuavcan_instance_t uavcan;
 
@@ -171,8 +173,6 @@ void can_spin()
 	{
 		cuavcan_handle_can_frame(&uavcan, frame->id, frame->data, frame->length);
 	}
-
-	DEBUG("CAN: %lu %lu %lu (%lu)", can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo));
 }
 
 void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan)

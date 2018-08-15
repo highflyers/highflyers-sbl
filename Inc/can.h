@@ -12,6 +12,7 @@
 typedef struct
 {
 	uint32_t rx, tx, rx_dropped;
+	uint32_t debug_size;
 } can_stats_t;
 
 typedef struct
