@@ -25,7 +25,7 @@
 
 //pozosta³e
 #define HDOP_MIN 0.1
-#define HDOP_MAX 1.4
+#define HDOP_MAX 4.0 // TODO I tweaked this from 1.4
 #define HDOP_COUNT 10
 #define EMPTY 1.1
 #endif /* DEFINES_H_ */

@@ -51,6 +51,8 @@
 #include "stm32f4xx_hal.h"
 #include "fatfs.h"
 
+#include <minmea.h>
+
 /* USER CODE BEGIN Includes */
 #include <gps.h>
 #include <Pos_check.h>
@@ -63,8 +65,6 @@
 #include <debug.h>
 #include "defines.h"
 #include "stm32fxxx_hal.h"
-#include "tm_stm32_gps.h"
-#include "tm_stm32_delay.h"
 
 /* USER CODE END Includes */
 
@@ -205,7 +205,7 @@ void messageHandler(cuavcan_message_t *msg)
 
 void can_print_stats()
 {
-	static int counter = 30*60*10;
+	static int counter = 30*60;
 	counter--;
 	counter = (counter > 0) ? counter : 0;
 	DEBUG("%4d    CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %d]", counter, can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
@@ -295,20 +295,18 @@ int main(void) {
 	/* USER CODE BEGIN 2 */
 	setRGB(INIT);
 	transmit_info("wartosci poczatkowe na wyjsciach", EMPTY);
-//	GPS_init();
+	gps_init();
 	HAL_Delay(1000);
 	transmit_info("odczyt z karty", EMPTY);
 	SD_dataread(&pointpos, &boxborders, &nop);
 	transmit_info("oczekiwanie na GPS", EMPTY);
 	while (hdop <= HDOP_MIN || hdop >= HDOP_MAX) {
-		HAL_Delay(100);
-//		hdop = GPS_update(&actpos);
-		transmit_info("hdop", hdop);
-		can_print_stats();
+		hdop = gps_update(&actpos);
+//		can_print_stats();
 	}
-	TM_GENERAL_DisableInterrupts();
+	__disable_irq();	// TODO: do we need to disable interrupts?
 	ret = IsInPolygon(&actpos, pointpos, &boxborders, nop);
-	TM_GENERAL_EnableInterrupts();
+	__enable_irq();
 	transmit_info("Sprawdzenie pozycji poczatkowej, wynik = ", (float) ret);
 	if (ret == 0) {
 		transmit_info("Poza strefa", EMPTY);
@@ -325,7 +323,7 @@ int main(void) {
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		if (GPS_update(&actpos) == 1)
+		//if (gps_update(&actpos) == 1)
 		{
 			transmit_info("hdop", actpos.HDOP);
 			if ((actpos.HDOP <= HDOP_MIN || actpos.HDOP >= HDOP_MAX)
@@ -344,9 +342,9 @@ int main(void) {
 			else
 			{
 				hdop_counter = 0;
-				TM_GENERAL_DisableInterrupts();
+				__disable_irq(); // TODO do we need to disable interrupts?
 				ret = IsInPolygon(&actpos, pointpos, &boxborders, nop);
-				TM_GENERAL_EnableInterrupts();
+				__enable_irq();
 				transmit_info("sprawdzenie pozycji", (float) ret);
 				if (ret == 0)
 				{
@@ -355,6 +353,8 @@ int main(void) {
 					termination();
 				}
 			}
+
+
 //			TM_GENERAL_DisableInterrupts();
 //			update_inputs();
 //			TM_GENERAL_EnableInterrupts();

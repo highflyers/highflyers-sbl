@@ -1,50 +1,84 @@
-/*
- * gps.c
- *
- *  Created on: 21.11.2017
- *      Author: Dell Latitude E5450
- */
-
 #include <gps.h>
+#include <string.h>
+#include <debug.h>
+#include "stm32fxxx_hal.h"
 
-TM_GPS_Data_t GPS_Data;
-TM_GPS_Result_t result, current;
-TM_GPS_Float_t GPS_Float;
-TM_GPS_Distance_t GPS_Distance;
-float temp;
-int data_ret = 0;
+#define gps_buffer_size		1024
+char gps_buffer[gps_buffer_size];
+uint32_t gps_buffer_index = 0;
+UART_HandleTypeDef huart6;
 
-void GPS_init() {
-	TM_DELAY_Init();
-	TM_GPS_Init(&GPS_Data, 9600);
-	TM_DELAY_SetTime(0);
+void gps_init()
+{
+	huart6.Instance = USART6;
+	huart6.Init.BaudRate = 9600;
+	huart6.Init.WordLength = UART_WORDLENGTH_8B;
+	huart6.Init.StopBits = UART_STOPBITS_1;
+	huart6.Init.Parity = UART_PARITY_NONE;
+	huart6.Init.Mode = UART_MODE_TX_RX;
+	huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+	if (HAL_UART_Init(&huart6) != HAL_OK) {
+		_Error_Handler(__FILE__, __LINE__);
+	}
 }
 
-int GPS_update(Point_pos* actpos) {
-	result = TM_GPS_Update(&GPS_Data);
-	if (result == TM_GPS_Result_FirstDataWaiting && TM_DELAY_Time() > 3000) {
-		TM_DELAY_SetTime(0);
-	}
-	if (result == TM_GPS_Result_NewData) {
-		current = TM_GPS_Result_NewData;
-		if (GPS_Data.Validity) {
-			data_ret = 1;
-			transmit_info("nowe dane", EMPTY);
-		} else {
+float gps_update(Point_pos* actpos)
+{
+	float ret = 0.0;
+
+	gps_buffer_index = 0;
+	while(1)
+	{
+		HAL_StatusTypeDef uart_ret = HAL_UART_Receive(&huart6, (uint8_t*) gps_buffer + gps_buffer_index, 1, 100);
+		++gps_buffer_index;
+		if ((uart_ret == HAL_TIMEOUT) || (gps_buffer_index > (gps_buffer_size - 2)))
+		{
+			gps_buffer[gps_buffer_index] = 0;
+			break;
 		}
-	} else if (result == TM_GPS_Result_FirstDataWaiting
-			&& current != TM_GPS_Result_FirstDataWaiting) {
-		current = TM_GPS_Result_FirstDataWaiting;
-		data_ret = 0;
-	} else if (result == TM_GPS_Result_OldData
-			&& current != TM_GPS_Result_OldData) {
-		current = TM_GPS_Result_OldData;
-		data_ret = 0;
 	}
 
-	actpos->Latitude = GPS_Data.Latitude;
-	actpos->Longitude = GPS_Data.Longitude;
-	actpos->HDOP = GPS_Data.HDOP;
+	struct minmea_sentence_rmc mininm_frame_rmc;
+	struct minmea_sentence_gga mininm_frame_gga;
+	int gprmc_index = gps_find_sequence_start(gps_buffer, "GPRMC");
+	int gpgga_index = gps_find_sequence_start(gps_buffer, "GPGGA");
+	if (gprmc_index >= 0 && gpgga_index >= 0)
+	{
+		bool minm_ret = minmea_parse_rmc(&mininm_frame_rmc, gps_buffer + gprmc_index);
+		minm_ret |= minmea_parse_gga(&mininm_frame_gga, gps_buffer + gpgga_index);
 
-	return data_ret;
+		actpos->HDOP = minmea_tofloat(&mininm_frame_gga.hdop);
+		actpos->Latitude = minmea_tofloat(&mininm_frame_rmc.latitude);
+		actpos->Longitude = minmea_tofloat(&mininm_frame_rmc.longitude);
+
+		DEBUG("%d %d %d", (int)(actpos->Latitude * 1000), (int)(actpos->Longitude * 1000), (int)(actpos->HDOP * 1000));
+		ret = actpos->HDOP + 0.5;
+	}
+	return ret;
+}
+
+int gps_find_sequence_start(const char *data, const char *sequence)
+{
+	int i = 0;
+	int len = strlen(data);
+	for (i = 0; i < len - 6; ++i)
+	{
+		if (data[i] == '$')
+		{
+			int j = 0;
+			for (j = 0; j < 5; ++j)
+			{
+				if (!(data[i + j + 1] == sequence[j]))
+				{
+					break;
+				}
+			}
+			if (j == 5)
+			{
+				return i;
+			}
+		}
+	}
+	return -1;
 }
