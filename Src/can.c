@@ -4,9 +4,9 @@
 #include <cuavcan.h>
 
 extern CAN_HandleTypeDef CanHandle;
-extern CanTxMsgTypeDef TxMessage;
-extern CanRxMsgTypeDef RxMessage;
-extern CanRxMsgTypeDef RxMessage1;
+CanTxMsgTypeDef TxMessage;
+CanRxMsgTypeDef RxMessage;
+CanRxMsgTypeDef RxMessage1;
 extern can_stats_t can_stats;
 extern can_fifo_t can_fifo;
 extern cuavcan_instance_t uavcan;
@@ -128,15 +128,6 @@ uint8_t can_fifo_push(can_fifo_t *fifo, uint32_t id, uint8_t *data, uint8_t leng
 			fifo->array[fifo->push_index].id = id;
 			fifo->array[fifo->push_index].length = length;
 			*(uint64_t*)fifo->array[fifo->push_index].data = *(uint64_t *)data;
-//			*(uint64_t*)fifo->array[fifo->push_index].data = *(uint64_t *)data;
-//			*(uint64_t*)fifo->array[fifo->push_index].data = 0x5634 + id;
-//			for(unsigned i = 0; i < length; ++i)
-//			{
-////				fifo->array[fifo->push_index].data[i] = data[i];
-////				fifo->array[fifo->push_index].data[i] = id % i;
-//				id += data[i];
-//			}
-//			fifo->array[fifo->push_index].data[length-1] = 0x9a;
 
 			uint32_t new_push_idnex = fifo->push_index + 1;
 			new_push_idnex %= fifo->capacity;
@@ -180,7 +171,8 @@ void can_spin()
 }
 
 void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan)
-{CanRxMsgTypeDef *can_active_buffer = hcan->pRxMsg;
+{
+	CanRxMsgTypeDef *can_active_buffer = hcan->pRxMsg;
 	if (can_fifo_push(&can_fifo, can_active_buffer->ExtId,
 			can_active_buffer->Data, can_active_buffer->DLC) == 0)
 	{

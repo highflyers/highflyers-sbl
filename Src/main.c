@@ -79,9 +79,6 @@ TIM_HandleTypeDef htim9;
 TIM_HandleTypeDef htim12;
 
 CAN_HandleTypeDef CanHandle;
-CanTxMsgTypeDef TxMessage;
-CanRxMsgTypeDef RxMessage;
-CanRxMsgTypeDef RxMessage1;
 can_stats_t can_stats;
 can_fifo_t can_fifo;
 cuavcan_instance_t uavcan;
@@ -208,7 +205,10 @@ void messageHandler(cuavcan_message_t *msg)
 
 void can_print_stats()
 {
-	DEBUG("CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %d]", can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
+	static int counter = 15*60*10;
+	counter--;
+	counter = (counter > 0) ? counter : 0;
+	DEBUG("%4d    CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %d]", counter, can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
 			id1030_data[0],
 			id1030_data[1],
 			id1030_data[2],
@@ -298,13 +298,14 @@ int main(void) {
 	GPS_init();
 	HAL_Delay(1000);
 	transmit_info("odczyt z karty", EMPTY);
-	SD_dataread(&pointpos, &boxborders, &nop);
+//	SD_dataread(&pointpos, &boxborders, &nop);
 	transmit_info("oczekiwanie na GPS", EMPTY);
 	while (hdop <= HDOP_MIN || hdop >= HDOP_MAX) {
 		HAL_Delay(100);
 		hdop = GPS_update(&actpos);
 		transmit_info("hdop", hdop);
 //		can_spin();
+		can_print_stats();
 	}
 	TM_GENERAL_DisableInterrupts();
 	ret = IsInPolygon(&actpos, pointpos, &boxborders, nop);
