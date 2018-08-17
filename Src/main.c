@@ -205,7 +205,7 @@ void messageHandler(cuavcan_message_t *msg)
 
 void can_print_stats()
 {
-	static int counter = 15*60*10;
+	static int counter = 30*60*10;
 	counter--;
 	counter = (counter > 0) ? counter : 0;
 	DEBUG("%4d    CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %d]", counter, can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
@@ -295,16 +295,15 @@ int main(void) {
 	/* USER CODE BEGIN 2 */
 	setRGB(INIT);
 	transmit_info("wartosci poczatkowe na wyjsciach", EMPTY);
-	GPS_init();
+//	GPS_init();
 	HAL_Delay(1000);
 	transmit_info("odczyt z karty", EMPTY);
-//	SD_dataread(&pointpos, &boxborders, &nop);
+	SD_dataread(&pointpos, &boxborders, &nop);
 	transmit_info("oczekiwanie na GPS", EMPTY);
 	while (hdop <= HDOP_MIN || hdop >= HDOP_MAX) {
 		HAL_Delay(100);
-		hdop = GPS_update(&actpos);
+//		hdop = GPS_update(&actpos);
 		transmit_info("hdop", hdop);
-//		can_spin();
 		can_print_stats();
 	}
 	TM_GENERAL_DisableInterrupts();
