@@ -6,8 +6,8 @@
 #define GPS_USART_PINSPACK        TM_USART_PinsPack_1
 
 //konfiguracja timerów PWM
-#define PWM_PERIOD 999
-#define PWM_PRESCALER 1439
+#define PWM_PERIOD (20000-1)
+#define PWM_PRESCALER 72
 
 //sta³e seRGB
 #define INIT 0

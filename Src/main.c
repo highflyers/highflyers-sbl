@@ -117,7 +117,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
 static void initOUTPUTS(void);
-uint16_t calculate_pwm(Pwm_output *pwm, int32_t value);
+uint16_t calculate_pwm(Pwm_output *pwm, int32_t value, int positive_only);
 void update_pwm(int32_t *data);
 static void change_PWM(Pwm_output output, uint16_t pulse);
 static void setRGB(uint8_t state);
@@ -144,16 +144,16 @@ Pwm_output LED_R = { &htim4, TIM_CHANNEL_2, 0, 0, 999, 0 };
 Pwm_output LED_G = { &htim4, TIM_CHANNEL_3, 0, 0, 999, 0 };
 Pwm_output LED_B = { &htim4, TIM_CHANNEL_4, 0, 0, 999, 0 };
 
-Pwm_output Aileron_R = { &htim3, TIM_CHANNEL_3, 75, 70, 90, 50 };
-Pwm_output Aileron_L = { &htim3, TIM_CHANNEL_4, 75, 70, 90, 50 };
-Pwm_output Elevator = { &htim3, TIM_CHANNEL_2, 75, 60, 100, 50 };
-Pwm_output Rudder = { &htim12, TIM_CHANNEL_1, 75, 60, 90, 50 };
-Pwm_output Motor1 = { &htim12, TIM_CHANNEL_2, 75, 70, 100, 50 };
-Pwm_output Motor2 = { &htim4, TIM_CHANNEL_1, 75, 70, 100, 50 };
-Pwm_output Motor3 = { &htim9, TIM_CHANNEL_1, 75, 70, 100, 50 };
-Pwm_output Motor4 = { &htim9, TIM_CHANNEL_2, 75, 70, 100, 50 };
-Pwm_output Joint1 = { &htim1, TIM_CHANNEL_2, 75, 50, 100, 50 };
-Pwm_output Joint2 = { &htim1, TIM_CHANNEL_3, 75, 50, 100, 50 };
+Pwm_output Aileron_R = { &htim3, TIM_CHANNEL_3, 1000, 1000, 2000, 1000 };
+Pwm_output Aileron_L = { &htim3, TIM_CHANNEL_4, 1000, 1000, 2000, 1000 };
+Pwm_output Elevator = { &htim3, TIM_CHANNEL_2, 1000, 1000, 2000, 1000 };
+Pwm_output Rudder = { &htim12, TIM_CHANNEL_1, 1000, 1000, 2000, 1000 };
+Pwm_output Motor1 = { &htim12, TIM_CHANNEL_2, 1000, 1000, 2000, 1000 };
+Pwm_output Motor2 = { &htim4, TIM_CHANNEL_1, 1000, 1000, 2000, 1000 };
+Pwm_output Motor3 = { &htim9, TIM_CHANNEL_1, 1000, 1000, 2000, 1000 };
+Pwm_output Motor4 = { &htim9, TIM_CHANNEL_2, 1000, 1000, 2000, 1000 };
+Pwm_output Joint1 = { &htim1, TIM_CHANNEL_2, 1000, 1000, 2000, 1000 };
+Pwm_output Joint2 = { &htim1, TIM_CHANNEL_3, 1000, 1000, 2000, 1000 };
 /* USER CODE END 0 */
 
 typedef union
@@ -187,13 +187,13 @@ void messageHandler(cuavcan_message_t *msg)
 			e_helper.u8[0] = 0;
 			for(uint8_t j = 0; j < 8; ++j)
 			{
-				e_helper.u8[0] |= (msg->payload[bit_index/8] & (0x01 << (7-(bit_index % 8))));
+				e_helper.u8[0] |= (msg->payload[bit_index/8] & (0x01 << (7-(bit_index % 8)))) ? 1<<(7-j) : 0;
 				++bit_index;
 			}
 			e_helper.u8[1] = 0;
 			for(uint8_t j = 0; j < 6; ++j)
 			{
-				e_helper.u8[1] |= (msg->payload[bit_index/8] & (0x01 << (7-(bit_index % 8))));
+				e_helper.u8[1] |= (msg->payload[bit_index/8] & (0x01 << (7-(bit_index % 8)))) ? 1<<(7-j) : 0;
 				++bit_index;
 			}
 			target[i] = e_helper.i16 >> 2;
@@ -205,10 +205,8 @@ void messageHandler(cuavcan_message_t *msg)
 
 void can_print_stats()
 {
-	/*static int counter = 0;
+	static int counter = 0;
 	counter++;
-	if(counter % 10 == 0)
-	{
 	DEBUG("%4d    CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %d]", counter, can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
 			id1030_data[0],
 			id1030_data[1],
@@ -218,15 +216,14 @@ void can_print_stats()
 			id1030_data[5],
 			id1030_data[6],
 			id1030_data[7],
-			id1010_data[0],
-			id1010_data[1],
-			id1010_data[2],
-			id1010_data[3],
-			id1010_data[4],
-			id1010_data[5],
-			id1010_data[6],
-			Elevator.pulse);
-	}*/
+			Aileron_L.pulse,
+			Aileron_R.pulse,
+			Elevator.pulse,
+			Rudder.pulse,
+			Motor1.pulse,
+			Motor2.pulse,
+			Motor3.pulse,
+			Motor4.pulse);
 }
 
 int main(void) {
@@ -701,14 +698,14 @@ void update_pwm(int32_t *data)
 {
 	//if(termination_enabled == 0)
 	{
-		Aileron_L.pulse = calculate_pwm(&Aileron_L, data[0]);
-		Aileron_R.pulse = calculate_pwm(&Aileron_R, -data[0]);
-		Elevator.pulse = calculate_pwm(&Elevator, data[1]);
-		Rudder.pulse = calculate_pwm(&Rudder, data[3]);
-		Motor1.pulse = calculate_pwm(&Motor1, data[4]);
-		Motor2.pulse = calculate_pwm(&Motor2, data[5]);
-		Motor3.pulse = calculate_pwm(&Motor3, data[6]);
-		Motor4.pulse = calculate_pwm(&Motor4, data[7]);
+		Aileron_L.pulse = calculate_pwm(&Aileron_L, data[0], 1);
+		Aileron_R.pulse = calculate_pwm(&Aileron_R, data[2], 1);
+		Elevator.pulse = calculate_pwm(&Elevator, data[1], 1);
+		Rudder.pulse = calculate_pwm(&Rudder, data[3], 1);
+		Motor1.pulse = calculate_pwm(&Motor1, data[4], 1);
+		Motor2.pulse = calculate_pwm(&Motor2, data[5], 1);
+		Motor3.pulse = calculate_pwm(&Motor3, data[6], 1);
+		Motor4.pulse = calculate_pwm(&Motor4, data[7], 1);
 
 		Aileron_L.timer->Instance->CCR4 = Aileron_L.pulse;
 		Aileron_R.timer->Instance->CCR3 = Aileron_R.pulse;
@@ -735,11 +732,11 @@ void update_pwm(int32_t *data)
 	}
 }
 
-uint16_t calculate_pwm(Pwm_output *pwm, int32_t value)
+uint16_t calculate_pwm(Pwm_output *pwm, int32_t value, int positive_only)
 {
 	uint16_t ret = pwm->pulse_fs_value;
-	float fill_rate = value + 8192;
-	fill_rate /= (8192+8191);
+	float fill_rate = value + (positive_only ? 0 : 8192);
+	fill_rate /= ((positive_only ? 0 : 8192) + 8191);
 	fill_rate *= (pwm->pulse_max - pwm->pulse_min);
 	ret = pwm->pulse_min + fill_rate;
 	return ret;
@@ -916,7 +913,8 @@ void termination(void) {
 	static int n = 0;
 	while (1) {
 		HAL_Delay(1000);
-		DEBUG("%d", ++n);
+		can_print_stats();
+//		DEBUG("%d", ++n);
 	}
 }
 /* USER CODE END 4 */
