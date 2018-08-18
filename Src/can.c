@@ -180,5 +180,6 @@ void HAL_CAN_RxCpltCallback(CAN_HandleTypeDef* hcan)
 	}
 	++can_stats.rx;
 	HAL_CAN_Receive_IT(&CanHandle, CAN_FIFO0);
+	can_spin();
 }
 

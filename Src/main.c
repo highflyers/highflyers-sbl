@@ -205,9 +205,10 @@ void messageHandler(cuavcan_message_t *msg)
 
 void can_print_stats()
 {
-	static int counter = 30*60;
-	counter--;
-	counter = (counter > 0) ? counter : 0;
+	/*static int counter = 0;
+	counter++;
+	if(counter % 10 == 0)
+	{
 	DEBUG("%4d    CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %d]", counter, can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
 			id1030_data[0],
 			id1030_data[1],
@@ -225,6 +226,7 @@ void can_print_stats()
 			id1010_data[5],
 			id1010_data[6],
 			Elevator.pulse);
+	}*/
 }
 
 int main(void) {
@@ -272,7 +274,7 @@ int main(void) {
 	htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
 	htim2.Init.Period = 1000-1;
-	htim2.Init.Prescaler = 100;
+	htim2.Init.Prescaler = 10;
 	HAL_TIM_Base_Init(&htim2);
 	HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
 	HAL_NVIC_EnableIRQ(TIM2_IRQn);
@@ -289,7 +291,7 @@ int main(void) {
 	uavcan.msgs[1].msg.payload = payload1;
 	uavcan.msgs[2].msg.payload = payload2;
 	can_init();
-	HAL_TIM_Base_Start_IT(&htim2);
+//	HAL_TIM_Base_Start_IT(&htim2);
 
 	HAL_UART_Receive_IT(&huart2, Received, 38);
 	/* USER CODE BEGIN 2 */
@@ -302,7 +304,7 @@ int main(void) {
 	transmit_info("oczekiwanie na GPS", EMPTY);
 	while (hdop <= HDOP_MIN || hdop >= HDOP_MAX) {
 		hdop = gps_update(&actpos);
-//		can_print_stats();
+		can_print_stats();
 	}
 	__disable_irq();	// TODO: do we need to disable interrupts?
 	ret = IsInPolygon(&actpos, pointpos, &boxborders, nop);
@@ -317,13 +319,11 @@ int main(void) {
 	}
 	setRGB(OK);
 	transmit_info("OK, main loop", EMPTY);
-	/* USER CODE END 2 */
 
-	/* Infinite loop */
-	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		//if (gps_update(&actpos) == 1)
+		can_print_stats();
+		if (gps_update(&actpos) == 1)
 		{
 			transmit_info("hdop", actpos.HDOP);
 			if ((actpos.HDOP <= HDOP_MIN || actpos.HDOP >= HDOP_MAX)
@@ -353,19 +353,8 @@ int main(void) {
 					termination();
 				}
 			}
-
-
-//			TM_GENERAL_DisableInterrupts();
-//			update_inputs();
-//			TM_GENERAL_EnableInterrupts();
 		}
-		/* USER CODE END WHILE */
-
-		/* USER CODE BEGIN 3 */
-		HAL_Delay(10);
 	}
-	/* USER CODE END 3 */
-
 }
 
 
@@ -924,8 +913,10 @@ void termination(void) {
 	change_PWM(Motor4, Motor4.pulse_fs_value);
 	change_PWM(Joint1, Joint1.pulse_fs_value);
 	change_PWM(Joint2, Joint2.pulse_fs_value);
+	static int n = 0;
 	while (1) {
 		HAL_Delay(1000);
+		DEBUG("%d", ++n);
 	}
 }
 /* USER CODE END 4 */
