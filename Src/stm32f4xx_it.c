@@ -34,7 +34,7 @@
 #include "stm32f4xx_hal.h"
 #include "stm32f4xx.h"
 #include "stm32f4xx_it.h"
-
+#include <can.h>
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */
@@ -42,6 +42,8 @@
 /* External variables --------------------------------------------------------*/
 extern SD_HandleTypeDef hsd;
 extern UART_HandleTypeDef huart2;
+extern CAN_HandleTypeDef CanHandle;
+extern TIM_HandleTypeDef htim2;
 
 /******************************************************************************/
 /*            Cortex-M4 Processor Interruption and Exception Handlers         */ 
@@ -168,14 +170,14 @@ void PendSV_Handler(void)
 */
 void SysTick_Handler(void)
 {
-  /* USER CODE BEGIN SysTick_IRQn 0 */
+	/* USER CODE BEGIN SysTick_IRQn 0 */
 
-  /* USER CODE END SysTick_IRQn 0 */
-  HAL_IncTick();
-  HAL_SYSTICK_IRQHandler();
-  /* USER CODE BEGIN SysTick_IRQn 1 */
+	/* USER CODE END SysTick_IRQn 0 */
+	HAL_IncTick();
+//  HAL_SYSTICK_IRQHandler();
+	/* USER CODE BEGIN SysTick_IRQn 1 */
 
-  /* USER CODE END SysTick_IRQn 1 */
+	/* USER CODE END SysTick_IRQn 1 */
 }
 
 /******************************************************************************/
@@ -227,6 +229,25 @@ void SDIO_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+void CAN1_RX0_IRQHandler(void)
+{
+	__disable_irq();
+	HAL_CAN_IRQHandler(&CanHandle);
+	__enable_irq();
+}
+
+void CAN1_RX1_IRQHandler(void)
+{
+	HAL_CAN_IRQHandler(&CanHandle);
+}
+
+void TIM2_IRQHandler(void)
+{
+	__disable_irq();
+	can_spin();
+	HAL_TIM_IRQHandler(&htim2);
+	__enable_irq();
+}
 
 /* USER CODE END 1 */
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

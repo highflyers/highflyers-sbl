@@ -1,10 +1,3 @@
-/*
- * defines.h
- *
- *  Created on: 04.01.2018
- *      Author: Dell Latitude E5450
- */
-
 #ifndef DEFINES_H_
 #define DEFINES_H_
 
@@ -13,8 +6,8 @@
 #define GPS_USART_PINSPACK        TM_USART_PinsPack_1
 
 //konfiguracja timerów PWM
-#define PWM_PERIOD 999
-#define PWM_PRESCALER 1439
+#define PWM_PERIOD (20000-1)
+#define PWM_PRESCALER 72
 
 //sta³e seRGB
 #define INIT 0
@@ -32,7 +25,7 @@
 
 //pozosta³e
 #define HDOP_MIN 0.1
-#define HDOP_MAX 1.4
+#define HDOP_MAX 4.0 // TODO I tweaked this from 1.4
 #define HDOP_COUNT 10
 #define EMPTY 1.1
 #endif /* DEFINES_H_ */

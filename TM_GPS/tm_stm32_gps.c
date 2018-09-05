@@ -25,8 +25,6 @@
  */
 #include "tm_stm32_gps.h"
 
-
-
 /* Is character a digit */
 #define GPS_IS_DIGIT(x)			((x) >= '0' && (x) <= '9')
 

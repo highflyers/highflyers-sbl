@@ -51,6 +51,8 @@
 #include "stm32f4xx_hal.h"
 #include "fatfs.h"
 
+#include <minmea.h>
+
 /* USER CODE BEGIN Includes */
 #include <gps.h>
 #include <Pos_check.h>
@@ -58,10 +60,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <can.h>
+#include <cuavcan.h>
+#include <debug.h>
 #include "defines.h"
 #include "stm32fxxx_hal.h"
-#include "tm_stm32_gps.h"
-#include "tm_stm32_delay.h"
 
 /* USER CODE END Includes */
 
@@ -69,10 +72,19 @@
 SD_HandleTypeDef hsd;
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim9;
 TIM_HandleTypeDef htim12;
+
+CAN_HandleTypeDef CanHandle;
+can_stats_t can_stats;
+can_fifo_t can_fifo;
+cuavcan_instance_t uavcan;
+uint8_t payload0[CUAVCAN_MESSAGE_MAX_LENGTH];
+uint8_t payload1[CUAVCAN_MESSAGE_MAX_LENGTH];
+uint8_t payload2[CUAVCAN_MESSAGE_MAX_LENGTH];
 
 UART_HandleTypeDef huart2;
 
@@ -105,10 +117,11 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
 static void initOUTPUTS(void);
+uint16_t calculate_pwm(Pwm_output *pwm, int32_t value, int positive_only);
+void update_pwm(int32_t *data);
 static void change_PWM(Pwm_output output, uint16_t pulse);
 static void setRGB(uint8_t state);
 void termination(void);
-void transmit_info(char* data_type, float value);
 void update_inputs(void);
 
 /* USER CODE END PFP */
@@ -122,21 +135,96 @@ int operatorM = 1;
 int operatorJ = -6;
 int pulse_print;
 
+int termination_enabled = 0;
+
+int32_t id1010_data[32];
+int32_t id1030_data[32];
+
 Pwm_output LED_R = { &htim4, TIM_CHANNEL_2, 0, 0, 999, 0 };
 Pwm_output LED_G = { &htim4, TIM_CHANNEL_3, 0, 0, 999, 0 };
 Pwm_output LED_B = { &htim4, TIM_CHANNEL_4, 0, 0, 999, 0 };
 
-Pwm_output Aileron_R = { &htim3, TIM_CHANNEL_3, 75, 70, 90, 50 }; //PWM7
-Pwm_output Aileron_L = { &htim3, TIM_CHANNEL_4, 75, 70, 90, 50 };
-Pwm_output Elevator = { &htim3, TIM_CHANNEL_2, 75, 60, 100, 50 };
-Pwm_output Rudder = { &htim12, TIM_CHANNEL_1, 75, 60, 90, 50 };
-Pwm_output Motor1 = { &htim12, TIM_CHANNEL_2, 75, 70, 100, 50 };
-Pwm_output Motor2 = { &htim4, TIM_CHANNEL_1, 75, 70, 100, 50 };
-Pwm_output Motor3 = { &htim9, TIM_CHANNEL_1, 75, 70, 100, 50 };
-Pwm_output Motor4 = { &htim9, TIM_CHANNEL_2, 75, 70, 100, 50 };
-Pwm_output Joint1 = { &htim1, TIM_CHANNEL_2, 75, 50, 100, 50 };
-Pwm_output Joint2 = { &htim1, TIM_CHANNEL_3, 75, 50, 100, 50 };
+Pwm_output Aileron_R = { &htim3, TIM_CHANNEL_3, 1000, 1000, 2000, 1000 };
+Pwm_output Aileron_L = { &htim3, TIM_CHANNEL_4, 1000, 1000, 2000, 1000 };
+Pwm_output Elevator = { &htim3, TIM_CHANNEL_2, 1000, 1000, 2000, 1000 };
+Pwm_output Rudder = { &htim12, TIM_CHANNEL_1, 1000, 1000, 2000, 1000 };
+Pwm_output Motor1 = { &htim12, TIM_CHANNEL_2, 1000, 1000, 2000, 1000 };
+Pwm_output Motor2 = { &htim4, TIM_CHANNEL_1, 1000, 1000, 2000, 1000 };
+Pwm_output Motor3 = { &htim9, TIM_CHANNEL_1, 1000, 1000, 2000, 1000 };
+Pwm_output Motor4 = { &htim9, TIM_CHANNEL_2, 1000, 1000, 2000, 1000 };
+Pwm_output Joint1 = { &htim1, TIM_CHANNEL_2, 1000, 1000, 2000, 1000 };
+Pwm_output Joint2 = { &htim1, TIM_CHANNEL_3, 1000, 1000, 2000, 1000 };
 /* USER CODE END 0 */
+
+typedef union
+{
+	uint8_t u8[2];
+	int16_t i16;
+} endianness_helper;
+
+void messageHandler(cuavcan_message_t *msg)
+{
+	int32_t *target = NULL;
+	switch(msg->id)
+	{
+	case 1010:
+		target = id1010_data;
+		break;
+	case 1030:
+		target = id1030_data;
+		break;
+	default:
+		break;
+	}
+	uint32_t n_bits = msg->length * 8;
+	uint32_t bit_index = 0;
+	if(n_bits % 14 == 0 && target != NULL)
+	{
+		int8_t n_cmds = n_bits / 14;
+		for(uint8_t i = 0; i < n_cmds; ++i)
+		{
+			endianness_helper e_helper;
+			e_helper.u8[0] = 0;
+			for(uint8_t j = 0; j < 8; ++j)
+			{
+				e_helper.u8[0] |= (msg->payload[bit_index/8] & (0x01 << (7-(bit_index % 8)))) ? 1<<(7-j) : 0;
+				++bit_index;
+			}
+			e_helper.u8[1] = 0;
+			for(uint8_t j = 0; j < 6; ++j)
+			{
+				e_helper.u8[1] |= (msg->payload[bit_index/8] & (0x01 << (7-(bit_index % 8)))) ? 1<<(7-j) : 0;
+				++bit_index;
+			}
+			target[i] = e_helper.i16 >> 2;
+		}
+	}
+	++can_stats.tx;
+	can_stats.debug_size = msg->length;
+}
+
+void can_print_stats()
+{
+	/*static int counter = 0;
+	counter++;
+	DEBUG("%4d    CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %d]", counter, can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
+			id1030_data[0],
+			id1030_data[1],
+			id1030_data[2],
+			id1030_data[3],
+			id1030_data[4],
+			id1030_data[5],
+			id1030_data[6],
+			id1030_data[7],
+			Aileron_L.pulse,
+			Aileron_R.pulse,
+			Elevator.pulse,
+			Rudder.pulse,
+			Motor1.pulse,
+			Motor2.pulse,
+			Motor3.pulse,
+			Motor4.pulse);*/
+}
 
 int main(void) {
 
@@ -175,24 +263,49 @@ int main(void) {
 	MX_TIM12_Init();
 	MX_USART2_UART_Init();
 	MX_FATFS_Init();
+
+	HAL_MPU_Disable();
+
+	__HAL_RCC_TIM2_CLK_ENABLE();
+	htim2.Instance = TIM2;
+	htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim2.Init.Period = 1000-1;
+	htim2.Init.Prescaler = 10;
+	HAL_TIM_Base_Init(&htim2);
+	HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(TIM2_IRQn);
+
+	initOUTPUTS();
+
+	can_stats.rx = 0;
+	can_stats.tx = 0;
+	can_stats.rx_dropped = 0;
+	can_fifo_init(&can_fifo);
+	uint16_t subscribed_ids[] = { 1030, 341};
+	cuavcan_init(&uavcan, subscribed_ids, 2, messageHandler);
+	uavcan.msgs[0].msg.payload = payload0;
+	uavcan.msgs[1].msg.payload = payload1;
+	uavcan.msgs[2].msg.payload = payload2;
+	can_init();
+//	HAL_TIM_Base_Start_IT(&htim2);
+
 	HAL_UART_Receive_IT(&huart2, Received, 38);
 	/* USER CODE BEGIN 2 */
 	setRGB(INIT);
 	transmit_info("wartosci poczatkowe na wyjsciach", EMPTY);
-	initOUTPUTS();
-	GPS_init();
+	gps_init();
 	HAL_Delay(1000);
 	transmit_info("odczyt z karty", EMPTY);
 	SD_dataread(&pointpos, &boxborders, &nop);
 	transmit_info("oczekiwanie na GPS", EMPTY);
 	while (hdop <= HDOP_MIN || hdop >= HDOP_MAX) {
-		HAL_Delay(10);
-		hdop = GPS_update(&actpos);
-		transmit_info("hdop", hdop);
+		hdop = gps_update(&actpos);
+		can_print_stats();
 	}
-	TM_GENERAL_DisableInterrupts();
+	__disable_irq();	// TODO: do we need to disable interrupts?
 	ret = IsInPolygon(&actpos, pointpos, &boxborders, nop);
-	TM_GENERAL_EnableInterrupts();
+	__enable_irq();
 	transmit_info("Sprawdzenie pozycji poczatkowej, wynik = ", (float) ret);
 	if (ret == 0) {
 		transmit_info("Poza strefa", EMPTY);
@@ -203,46 +316,48 @@ int main(void) {
 	}
 	setRGB(OK);
 	transmit_info("OK, main loop", EMPTY);
-	/* USER CODE END 2 */
 
-	/* Infinite loop */
-	/* USER CODE BEGIN WHILE */
-	while (1) {
-		if(GPS_update(&actpos) == 1){
-		transmit_info("hdop", actpos.HDOP);
-		if ((actpos.HDOP <= HDOP_MIN || actpos.HDOP >= HDOP_MAX)
-				& (hdop_counter >= HDOP_COUNT)) {
-			transmit_info("funkcja terminacji - brak gps", EMPTY);
-			setRGB(FAULT);
-			termination();
-		} else if ((actpos.HDOP <= HDOP_MIN || actpos.HDOP >= HDOP_MAX)
-				& (hdop_counter < HDOP_COUNT)) {
-			hdop_counter++;
-			transmit_info("chwilowy brak sygnalu", (float) hdop_counter);
-		} else {
-			hdop_counter = 0;
-			TM_GENERAL_DisableInterrupts();
-			ret = IsInPolygon(&actpos, pointpos, &boxborders, nop);
-			TM_GENERAL_EnableInterrupts();
-			transmit_info("sprawdzenie pozycji", (float) ret);
-			if (ret == 0) {
-				transmit_info("funkcja terminacji - poza strefa", EMPTY);
+	while (1)
+	{
+		can_print_stats();
+		if (gps_update(&actpos) == 1)
+		{
+			transmit_info("hdop", actpos.HDOP);
+			if ((actpos.HDOP <= HDOP_MIN || actpos.HDOP >= HDOP_MAX)
+					& (hdop_counter >= HDOP_COUNT))
+			{
+				transmit_info("funkcja terminacji - brak gps", EMPTY);
 				setRGB(FAULT);
 				termination();
 			}
+			else if ((actpos.HDOP <= HDOP_MIN || actpos.HDOP >= HDOP_MAX)
+					& (hdop_counter < HDOP_COUNT))
+			{
+				hdop_counter++;
+				transmit_info("chwilowy brak sygnalu", (float) hdop_counter);
+			}
+			else
+			{
+				hdop_counter = 0;
+				__disable_irq(); // TODO do we need to disable interrupts?
+				ret = IsInPolygon(&actpos, pointpos, &boxborders, nop);
+				__enable_irq();
+				transmit_info("sprawdzenie pozycji", (float) ret);
+				if (ret == 0)
+				{
+					transmit_info("funkcja terminacji - poza strefa", EMPTY);
+					setRGB(FAULT);
+					termination();
+				}
+			}
 		}
-		TM_GENERAL_DisableInterrupts();
-		update_inputs();
-		TM_GENERAL_EnableInterrupts();
-		}
-		/* USER CODE END WHILE */
-
-		/* USER CODE BEGIN 3 */
-		HAL_Delay(10);
 	}
-	/* USER CODE END 3 */
-
 }
+
+
+
+
+
 
 /** System Clock Configuration
  */
@@ -579,6 +694,54 @@ void initOUTPUTS(void) {
 	change_PWM(Joint2, Joint2.pulse);
 }
 
+void update_pwm(int32_t *data)
+{
+	//if(termination_enabled == 0)
+	{
+		Aileron_L.pulse = calculate_pwm(&Aileron_L, data[0], 1);
+		Aileron_R.pulse = calculate_pwm(&Aileron_R, data[2], 1);
+		Elevator.pulse = calculate_pwm(&Elevator, data[1], 1);
+		Rudder.pulse = calculate_pwm(&Rudder, data[3], 1);
+		Motor1.pulse = calculate_pwm(&Motor1, data[4], 1);
+		Motor2.pulse = calculate_pwm(&Motor2, data[5], 1);
+		Motor3.pulse = calculate_pwm(&Motor3, data[6], 1);
+		Motor4.pulse = calculate_pwm(&Motor4, data[7], 1);
+
+		Aileron_L.timer->Instance->CCR4 = Aileron_L.pulse;
+		Aileron_R.timer->Instance->CCR3 = Aileron_R.pulse;
+		Elevator.timer->Instance->CCR2 = Elevator.pulse;
+		Rudder.timer->Instance->CCR1 = Rudder.pulse;
+		Motor1.timer->Instance->CCR2 = Motor1.pulse;
+		Motor2.timer->Instance->CCR1 = Motor2.pulse;
+		Motor3.timer->Instance->CCR1 = Motor3.pulse;
+		Motor4.timer->Instance->CCR2 = Motor4.pulse;
+
+	}
+	//else
+	{
+//		change_PWM(Aileron_L, Aileron_L.pulse_fs_value);
+//		change_PWM(Aileron_R, Aileron_R.pulse_fs_value);
+//		change_PWM(Elevator, Elevator.pulse_fs_value);
+//		change_PWM(Rudder, Rudder.pulse_fs_value);
+//		change_PWM(Motor1, Motor1.pulse_fs_value);
+//		change_PWM(Motor2, Motor2.pulse_fs_value);
+//		change_PWM(Motor3, Motor3.pulse_fs_value);
+//		change_PWM(Motor4, Motor4.pulse_fs_value);
+//		change_PWM(Joint1, Joint1.pulse_fs_value);
+//		change_PWM(Joint2, Joint2.pulse_fs_value);
+	}
+}
+
+uint16_t calculate_pwm(Pwm_output *pwm, int32_t value, int positive_only)
+{
+	uint16_t ret = pwm->pulse_fs_value;
+	float fill_rate = value + (positive_only ? 0 : 8192);
+	fill_rate /= ((positive_only ? 0 : 8192) + 8191);
+	fill_rate *= (pwm->pulse_max - pwm->pulse_min);
+	ret = pwm->pulse_min + fill_rate;
+	return ret;
+}
+
 void update_inputs(void) {
 	if (Aileron_L.pulse >= 100) {
 		operatorAL = -5;
@@ -686,90 +849,7 @@ void update_inputs(void) {
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-//	uint8_t Data[40];
-	char korektor[] = " ;\n\r";
-	char * dat_buff;
-	float dat_buff_f[10];
-
-	//przepisanie danych z bufora do struktury
-	for (int i = 0; i < 10; i++) {
-		if (i == 0) {
-			dat_buff = strtok(&Received, korektor);
-		} else {
-			dat_buff = strtok(NULL, korektor);
-		}
-		dat_buff_f[i] = atof(dat_buff);
-	}
-
-	//Porownanie nowych wartoœci z poprzednimi i zmiana
-	if (dat_buff_f[0] != Aileron_L.pulse) {
-		Aileron_L.pulse = dat_buff_f[0];
-		change_PWM(Aileron_L, Aileron_L.pulse);
-	}
-	if (dat_buff_f[1] != Aileron_R.pulse) {
-		Aileron_R.pulse = dat_buff_f[1];
-		change_PWM(Aileron_R, Aileron_R.pulse);
-	}
-	if (dat_buff_f[2] != Elevator.pulse) {
-		Elevator.pulse = dat_buff_f[2];
-		change_PWM(Elevator, Elevator.pulse);
-	}
-	if (dat_buff_f[3] != Rudder.pulse) {
-		Rudder.pulse = dat_buff_f[3];
-		change_PWM(Rudder, Rudder.pulse);
-	}
-	if (dat_buff_f[4] != Motor1.pulse) {
-		Motor1.pulse = dat_buff_f[4];
-		change_PWM(Motor1, Motor1.pulse);
-	}
-	if (dat_buff_f[5] != Motor2.pulse) {
-		Motor2.pulse = dat_buff_f[5];
-		change_PWM(Motor2, Motor2.pulse);
-	}
-	if (dat_buff_f[6] != Motor3.pulse) {
-		Motor3.pulse = dat_buff_f[6];
-		change_PWM(Motor3, Motor3.pulse);
-	}
-	if (dat_buff_f[7] != Motor4.pulse) {
-		Motor4.pulse = dat_buff_f[7];
-		change_PWM(Motor4, Motor4.pulse);
-	}
-	if (dat_buff_f[8] != Joint1.pulse) {
-		Joint1.pulse = dat_buff_f[8];
-		change_PWM(Joint1, Joint1.pulse);
-	}
-	if (dat_buff_f[9] != Joint2.pulse) {
-		Joint2.pulse = dat_buff_f[9];
-		change_PWM(Joint2, Joint2.pulse);
-	}
-	transmit_info("Aileron_L.pulse", Aileron_L.pulse);
-	transmit_info("Aileron_R.pulse", Aileron_R.pulse);
-	transmit_info("Elevator.pulse", Elevator.pulse);
-	transmit_info("Rudder.pulse", Rudder.pulse);
-	transmit_info("Motor1.pulse", Motor1.pulse);
-	transmit_info("Motor2.pulse", Motor2.pulse);
-	transmit_info("Motor3.pulse", Motor3.pulse);
-	transmit_info("Motor4.pulse", Motor4.pulse);
-	transmit_info("Joint1.pulse", Joint1.pulse);
-	transmit_info("Joint2.pulse", Joint2.pulse);
-	// Ponowne w³¹czenie nas³uchiwania
 	HAL_UART_Receive_IT(&huart2, Received, 38);
-}
-
-//zbieranie danych
-void transmit_info(char* type, float value) {
-	uint8_t data_type[50] = { 0 };
-	uint8_t data_value[50] = { 0 };
-
-	//wyslanie informacji o typie danych
-	sprintf(data_type, "%s: ", type); // Stworzenie wiadomosci do wyslania oraz przypisanie ilosci wysylanych znakow do zmiennej size./
-	HAL_UART_Transmit(&huart2, (uint8_t *) data_type, strlen(data_type),
-	HAL_MAX_DELAY);
-
-	//wyslanie danych tego typu
-	sprintf(data_value, "%f\r\n", value);
-	HAL_UART_Transmit(&huart2, (uint8_t *) data_value, strlen(data_value),
-	HAL_MAX_DELAY);
 }
 
 //zmiana parametrów sygna³u PWM
@@ -819,6 +899,7 @@ void setRGB(uint8_t state) {
 
 //ustawienie wartoœci sterów w pozycjach failsafe
 void termination(void) {
+	termination_enabled = 1;
 	change_PWM(Aileron_L, Aileron_L.pulse_fs_value);
 	change_PWM(Aileron_R, Aileron_R.pulse_fs_value);
 	change_PWM(Elevator, Elevator.pulse_fs_value);
@@ -829,8 +910,11 @@ void termination(void) {
 	change_PWM(Motor4, Motor4.pulse_fs_value);
 	change_PWM(Joint1, Joint1.pulse_fs_value);
 	change_PWM(Joint2, Joint2.pulse_fs_value);
+	static int n = 0;
 	while (1) {
 		HAL_Delay(1000);
+//		can_print_stats();
+		DEBUG("%d", ++n);
 	}
 }
 /* USER CODE END 4 */
