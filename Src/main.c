@@ -205,7 +205,7 @@ void messageHandler(cuavcan_message_t *msg)
 
 void can_print_stats()
 {
-	static int counter = 0;
+	/*static int counter = 0;
 	counter++;
 	DEBUG("%4d    CAN: %lu %lu %lu (%lu) %d [%ld %ld %ld %ld %ld %ld %ld %ld] [%ld %ld %ld %ld %ld %ld %ld %d]", counter, can_stats.rx, can_stats.tx, can_stats.rx_dropped, can_fifo.capacity - can_fifo_free_space(&can_fifo), can_stats.debug_size,
 			id1030_data[0],
@@ -223,7 +223,7 @@ void can_print_stats()
 			Motor1.pulse,
 			Motor2.pulse,
 			Motor3.pulse,
-			Motor4.pulse);
+			Motor4.pulse);*/
 }
 
 int main(void) {
@@ -913,8 +913,8 @@ void termination(void) {
 	static int n = 0;
 	while (1) {
 		HAL_Delay(1000);
-		can_print_stats();
-//		DEBUG("%d", ++n);
+//		can_print_stats();
+		DEBUG("%d", ++n);
 	}
 }
 /* USER CODE END 4 */
